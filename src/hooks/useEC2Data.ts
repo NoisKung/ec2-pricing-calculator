@@ -5,6 +5,22 @@ import { EC2DataMap, FilteredInstance, CartItem, PricingModelKey } from '@/types
 import { API_URL, PRICING_MODELS, REGION_NAMES, PRIORITY_REGIONS } from '@/constants/ec2';
 import { isValidRegionCode } from '@/lib/utils';
 
+const CART_STORAGE_KEY = 'ec2cal-cart';
+
+function loadCartFromStorage(): CartItem[] {
+    if (typeof window === 'undefined') return [];
+    try {
+        const raw = localStorage.getItem(CART_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+function saveCartToStorage(cart: CartItem[]) {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart)); }
+    catch { /* quota exceeded, ignore */ }
+}
+
 export function useEC2Data() {
     const [ec2Data, setEc2Data] = useState<EC2DataMap>({});
     const [loading, setLoading] = useState(true);
@@ -23,8 +39,20 @@ export function useEC2Data() {
     const [quantity, setQuantity] = useState(1);
     const [hours, setHours] = useState(730);
 
-    // Cart
+    // Cart — initialize from localStorage
     const [cart, setCart] = useState<CartItem[]>([]);
+    const [cartLoaded, setCartLoaded] = useState(false);
+
+    // Load cart from localStorage on mount
+    useEffect(() => {
+        setCart(loadCartFromStorage());
+        setCartLoaded(true);
+    }, []);
+
+    // Persist cart to localStorage on every change (after initial load)
+    useEffect(() => {
+        if (cartLoaded) saveCartToStorage(cart);
+    }, [cart, cartLoaded]);
 
     // Fetch data
     const fetchData = useCallback(async () => {
@@ -154,24 +182,64 @@ export function useEC2Data() {
         const hourlyRate = selectedInstance.price * model.discount;
         const totalMonthly = hourlyRate * hours * quantity;
 
-        const newItem: CartItem = {
-            id: Date.now().toString(),
-            region: REGION_NAMES[region] || region,
-            regionId: region,
-            os,
-            type: selectedInstance.name,
-            specs: `${selectedInstance.vcpu} vCPUs, ${selectedInstance.memory}`,
-            model: selectedModel,
-            modelLabel: model.label,
-            qty: quantity,
-            hours,
-            hourlyRate,
-            total: totalMonthly,
-        };
+        // Check for duplicate: same type + region + os + model
+        setCart(prev => {
+            const existingIdx = prev.findIndex(
+                item => item.type === selectedInstance.name &&
+                    item.regionId === region &&
+                    item.os === os &&
+                    item.model === selectedModel &&
+                    item.hours === hours
+            );
 
-        setCart(prev => [...prev, newItem]);
+            if (existingIdx >= 0) {
+                // Merge: add quantity to existing item
+                const updated = [...prev];
+                const existing = updated[existingIdx];
+                const newQty = existing.qty + quantity;
+                updated[existingIdx] = {
+                    ...existing,
+                    qty: newQty,
+                    total: existing.hourlyRate * existing.hours * newQty,
+                };
+                return updated;
+            }
+
+            return [...prev, {
+                id: Date.now().toString(),
+                region: REGION_NAMES[region] || region,
+                regionId: region,
+                os,
+                type: selectedInstance.name,
+                specs: `${selectedInstance.vcpu} vCPUs, ${selectedInstance.memory}`,
+                model: selectedModel,
+                modelLabel: model.label,
+                qty: quantity,
+                hours,
+                hourlyRate,
+                total: totalMonthly,
+            }];
+        });
+
         setQuantity(1);
     }, [selectedInstance, selectedModel, region, os, quantity, hours]);
+
+    const updateCartItemQty = useCallback((id: string, newQty: number) => {
+        if (newQty <= 0) return;
+        setCart(prev => prev.map(item =>
+            item.id === id
+                ? { ...item, qty: newQty, total: item.hourlyRate * item.hours * newQty }
+                : item
+        ));
+    }, []);
+
+    const duplicateCartItem = useCallback((id: string) => {
+        setCart(prev => {
+            const item = prev.find(i => i.id === id);
+            if (!item) return prev;
+            return [...prev, { ...item, id: Date.now().toString() }];
+        });
+    }, []);
 
     const removeFromCart = useCallback((id: string) => {
         setCart(prev => prev.filter(item => item.id !== id));
@@ -180,6 +248,26 @@ export function useEC2Data() {
     const clearCart = useCallback(() => {
         setCart([]);
     }, []);
+
+    const exportCartCSV = useCallback(() => {
+        if (cart.length === 0) return;
+        const headers = ['Instance Type', 'OS', 'Region', 'Specs', 'Pricing Model', 'Quantity', 'Hours/Month', 'Hourly Rate (USD)', 'Monthly Cost (USD)'];
+        const rows = cart.map(item => [
+            item.type, item.os, item.region, item.specs,
+            item.modelLabel, item.qty, item.hours,
+            item.hourlyRate.toFixed(4), item.total.toFixed(2)
+        ]);
+        rows.push(['', '', '', '', '', '', '', 'Grand Total', grandTotal.toFixed(2)]);
+
+        const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ec2-estimate-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [cart, grandTotal]);
 
     // Reset selection on filter change
     useEffect(() => {
@@ -203,6 +291,7 @@ export function useEC2Data() {
         fetchData, setRegion, setOs, setFamily, setSearchQuery,
         selectInstance, setSelectedModel,
         setQuantity, setHours,
-        addToCart, removeFromCart, clearCart,
+        addToCart, updateCartItemQty, duplicateCartItem,
+        removeFromCart, clearCart, exportCartCSV,
     };
 }

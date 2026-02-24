@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useEC2Data } from '@/hooks/useEC2Data';
 import { PRICING_MODELS, REGION_NAMES, MODEL_BADGE_COLORS, MODEL_SHORT_LABELS } from '@/constants/ec2';
 import { formatCurrency } from '@/lib/utils';
 import { PricingModelKey } from '@/types/ec2';
 
+const HOUR_PRESETS = [
+    { label: '24/7', value: 730, desc: 'เต็มเดือน' },
+    { label: '12h', value: 365, desc: '12 ชม./วัน' },
+    { label: '8h', value: 176, desc: 'วันทำงาน' },
+    { label: '4h', value: 88, desc: '4 ชม./วัน' },
+];
+
 export default function EC2Calculator() {
     const ec2 = useEC2Data();
     const [showDropdown, setShowDropdown] = useState(false);
     const [addFlash, setAddFlash] = useState(false);
+    const [highlightIndex, setHighlightIndex] = useState(-1);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
 
@@ -21,11 +29,44 @@ export default function EC2Calculator() {
                 searchRef.current && !searchRef.current.contains(e.target as Node)
             ) {
                 setShowDropdown(false);
+                setHighlightIndex(-1);
             }
         }
         document.addEventListener('click', handleClick);
         return () => document.removeEventListener('click', handleClick);
     }, []);
+
+    // Reset highlight when search changes
+    useEffect(() => { setHighlightIndex(-1); }, [ec2.searchQuery]);
+
+    // Keyboard navigation for dropdown
+    const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (!showDropdown) return;
+        const results = ec2.searchResults;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlightIndex(prev => (prev + 1) % results.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlightIndex(prev => (prev - 1 + results.length) % results.length);
+        } else if (e.key === 'Enter' && highlightIndex >= 0 && highlightIndex < results.length) {
+            e.preventDefault();
+            ec2.selectInstance(results[highlightIndex].name);
+            setShowDropdown(false);
+            setHighlightIndex(-1);
+        } else if (e.key === 'Escape') {
+            setShowDropdown(false);
+            setHighlightIndex(-1);
+        }
+    }, [showDropdown, ec2, highlightIndex]);
+
+    // Scroll highlighted item into view
+    useEffect(() => {
+        if (highlightIndex < 0 || !dropdownRef.current) return;
+        const items = dropdownRef.current.querySelectorAll('[data-instance-option]');
+        items[highlightIndex]?.scrollIntoView({ block: 'nearest' });
+    }, [highlightIndex]);
 
     function handleAddToCart() {
         if (!ec2.selectedInstance || ec2.quantity <= 0 || ec2.hours <= 0) {
@@ -94,6 +135,9 @@ export default function EC2Calculator() {
                                 <span className="text-blue-600 text-lg">⚙️</span>
                             </div>
                             ตั้งค่าอินสแตนซ์
+                            <span className="ml-auto text-[10px] text-gray-400 font-normal bg-gray-100 px-2 py-0.5 rounded-full">
+                                {ec2.filteredInstances.length} types
+                            </span>
                         </h2>
 
                         <div className="space-y-3.5">
@@ -148,10 +192,11 @@ export default function EC2Calculator() {
                                     <input
                                         ref={searchRef}
                                         type="text"
-                                        placeholder="ค้นหา instance type..."
+                                        placeholder="ค้นหา instance type... (↑↓ เลือก, Enter ยืนยัน)"
                                         value={ec2.searchQuery}
                                         onChange={e => { ec2.setSearchQuery(e.target.value); setShowDropdown(true); }}
                                         onFocus={() => setShowDropdown(true)}
+                                        onKeyDown={handleSearchKeyDown}
                                         autoComplete="off"
                                         className="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pr-8"
                                     />
@@ -164,11 +209,16 @@ export default function EC2Calculator() {
                                         {ec2.searchResults.length === 0 ? (
                                             <div className="p-4 text-center text-gray-400 text-sm">ไม่พบ instance type ที่ตรง</div>
                                         ) : (
-                                            ec2.searchResults.map(inst => (
+                                            ec2.searchResults.map((inst, idx) => (
                                                 <div
                                                     key={inst.name}
-                                                    onClick={() => { ec2.selectInstance(inst.name); setShowDropdown(false); }}
-                                                    className={`px-3 py-2.5 cursor-pointer flex justify-between items-center gap-2 text-sm hover:bg-gray-50 transition-colors ${ec2.selectedInstance?.name === inst.name ? 'bg-blue-50 border-l-[3px] border-blue-500' : ''
+                                                    data-instance-option
+                                                    onClick={() => { ec2.selectInstance(inst.name); setShowDropdown(false); setHighlightIndex(-1); }}
+                                                    className={`px-3 py-2.5 cursor-pointer flex justify-between items-center gap-2 text-sm transition-colors ${idx === highlightIndex
+                                                            ? 'bg-blue-50 border-l-[3px] border-blue-500'
+                                                            : ec2.selectedInstance?.name === inst.name
+                                                                ? 'bg-blue-50/50'
+                                                                : 'hover:bg-gray-50'
                                                         }`}
                                                 >
                                                     <div>
@@ -222,8 +272,8 @@ export default function EC2Calculator() {
                                             type="button"
                                             onClick={() => ec2.setSelectedModel(key)}
                                             className={`rounded-lg px-3 py-2 text-xs font-medium text-center transition-all ${ec2.selectedModel === key
-                                                    ? 'bg-blue-800 text-white shadow-md'
-                                                    : 'bg-gray-100 text-gray-600 hover:bg-blue-50'
+                                                ? 'bg-blue-800 text-white shadow-md'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-blue-50'
                                                 }`}
                                         >
                                             {key === 'ondemand' ? 'On-Demand' : key === 'ri1yr' ? 'RI 1 ปี' : key === 'ri3yr' ? 'RI 3 ปี' : 'Savings Plan'}
@@ -237,7 +287,7 @@ export default function EC2Calculator() {
                                 </div>
                             </div>
 
-                            {/* Quantity & Hours */}
+                            {/* Quantity & Hours with Presets */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">จำนวน</label>
@@ -262,6 +312,25 @@ export default function EC2Calculator() {
                                 </div>
                             </div>
 
+                            {/* Hour Presets */}
+                            <div className="flex gap-1.5">
+                                {HOUR_PRESETS.map(preset => (
+                                    <button
+                                        key={preset.value}
+                                        type="button"
+                                        onClick={() => ec2.setHours(preset.value)}
+                                        className={`flex-1 text-center py-1.5 rounded-lg text-[10px] font-medium transition-all ${ec2.hours === preset.value
+                                                ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
+                                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                            }`}
+                                        title={preset.desc}
+                                    >
+                                        {preset.label}
+                                        <div className="text-[9px] font-normal opacity-70">{preset.value}h</div>
+                                    </button>
+                                ))}
+                            </div>
+
                             {/* Live Price Preview */}
                             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
                                 <p className="text-xs text-blue-700 mb-0.5">ราคาประเมินต่อเดือน (ต่อ 1 เครื่อง)</p>
@@ -276,10 +345,10 @@ export default function EC2Calculator() {
                                 disabled={!ec2.selectedInstance}
                                 onClick={handleAddToCart}
                                 className={`w-full font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] ${addFlash
-                                        ? 'bg-green-600 text-white'
-                                        : ec2.selectedInstance
-                                            ? 'bg-gray-900 hover:bg-gray-800 text-white hover:shadow-lg'
-                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    ? 'bg-green-600 text-white'
+                                    : ec2.selectedInstance
+                                        ? 'bg-gray-900 hover:bg-gray-800 text-white hover:shadow-lg'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                     }`}
                             >
                                 {addFlash ? '✓ เพิ่มแล้ว!' : '➕ เพิ่มลงในรายการประเมิน'}
@@ -300,18 +369,24 @@ export default function EC2Calculator() {
                                 {ec2.pricingComparison.map(item => (
                                     <div
                                         key={item.key}
-                                        className={`rounded-lg px-3 py-2.5 flex justify-between items-center transition-all border-2 ${item.key === 'ri3yr'
-                                                ? 'border-green-300 bg-gradient-to-r from-green-50 to-emerald-50'
-                                                : 'border-transparent bg-gray-50 hover:border-blue-200'
+                                        onClick={() => ec2.setSelectedModel(item.key as PricingModelKey)}
+                                        className={`rounded-lg px-3 py-2.5 flex justify-between items-center transition-all border-2 cursor-pointer ${item.key === ec2.selectedModel
+                                                ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200'
+                                                : item.key === 'ri3yr'
+                                                    ? 'border-green-300 bg-gradient-to-r from-green-50 to-emerald-50 hover:border-green-400'
+                                                    : 'border-transparent bg-gray-50 hover:border-blue-200'
                                             }`}
                                     >
-                                        <div>
-                                            <span className="text-xs font-medium text-gray-700">{item.label}</span>
-                                            {item.key !== 'ondemand' && (
-                                                <span className="ml-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                                                    -{item.savings}%
-                                                </span>
-                                            )}
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2 h-2 rounded-full ${item.key === ec2.selectedModel ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                                            <div>
+                                                <span className="text-xs font-medium text-gray-700">{item.label}</span>
+                                                {item.key !== 'ondemand' && (
+                                                    <span className="ml-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                                        -{item.savings}%
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="text-right">
                                             <span className={`text-sm font-bold ${item.key === 'ri3yr' ? 'text-green-700' : 'text-gray-900'}`}>
@@ -322,6 +397,18 @@ export default function EC2Calculator() {
                                     </div>
                                 ))}
                             </div>
+
+                            {/* Savings summary */}
+                            {ec2.selectedModel !== 'ondemand' && (
+                                <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2.5 flex items-center gap-2">
+                                    <span className="text-lg">💰</span>
+                                    <div>
+                                        ประหยัดได้ <strong>{formatCurrency(
+                                            (ec2.pricingComparison[0]?.monthly || 0) - ec2.livePreview.monthly
+                                        )}</strong>/เดือน เมื่อเทียบกับ On-Demand
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Stopped Instance Info */}
                             <div className="mt-3 pt-3 border-t border-gray-100">
@@ -352,14 +439,25 @@ export default function EC2Calculator() {
                                     </span>
                                 )}
                             </h2>
-                            {ec2.cart.length > 0 && (
-                                <button
-                                    onClick={() => { if (confirm('คุณต้องการล้างรายการประเมินทั้งหมดใช่หรือไม่?')) ec2.clearCart(); }}
-                                    className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors flex items-center gap-1 hover:bg-red-50 px-3 py-1.5 rounded-lg"
-                                >
-                                    🗑️ ล้างทั้งหมด
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {ec2.cart.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={ec2.exportCartCSV}
+                                            className="text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors flex items-center gap-1 hover:bg-blue-50 px-3 py-1.5 rounded-lg"
+                                            title="Export เป็นไฟล์ CSV"
+                                        >
+                                            📥 Export CSV
+                                        </button>
+                                        <button
+                                            onClick={() => { if (confirm('คุณต้องการล้างรายการประเมินทั้งหมดใช่หรือไม่?')) ec2.clearCart(); }}
+                                            className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors flex items-center gap-1 hover:bg-red-50 px-3 py-1.5 rounded-lg"
+                                        >
+                                            🗑️ ล้างทั้งหมด
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {/* Table */}
@@ -372,12 +470,12 @@ export default function EC2Calculator() {
                                         <th className="p-3.5 font-medium text-center">จำนวน</th>
                                         <th className="p-3.5 font-medium text-center">ชม./เดือน</th>
                                         <th className="p-3.5 font-medium text-right">ราคา/เดือน</th>
-                                        <th className="p-3.5 font-medium text-center w-12"></th>
+                                        <th className="p-3.5 font-medium text-center w-20"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 text-sm">
                                     {ec2.cart.map(item => (
-                                        <tr key={item.id} className="hover:bg-gray-50 transition-colors animate-fadeInUp">
+                                        <tr key={item.id} className="hover:bg-gray-50 transition-colors animate-fadeInUp group">
                                             <td className="p-3.5">
                                                 <div className="font-medium text-gray-900">{item.type}</div>
                                                 <div className="text-xs text-gray-400 mt-0.5">{item.os} • {item.region}</div>
@@ -389,9 +487,24 @@ export default function EC2Calculator() {
                                                 </span>
                                             </td>
                                             <td className="p-3.5 text-center">
-                                                <span className="inline-flex items-center justify-center px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium text-xs">
-                                                    x{item.qty}
-                                                </span>
+                                                <div className="inline-flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => ec2.updateCartItemQty(item.id, item.qty - 1)}
+                                                        disabled={item.qty <= 1}
+                                                        className="w-5 h-5 rounded text-xs bg-gray-100 hover:bg-gray-200 disabled:opacity-30 disabled:hover:bg-gray-100 transition-colors flex items-center justify-center"
+                                                    >
+                                                        −
+                                                    </button>
+                                                    <span className="inline-flex items-center justify-center px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium text-xs min-w-[28px]">
+                                                        x{item.qty}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => ec2.updateCartItemQty(item.id, item.qty + 1)}
+                                                        className="w-5 h-5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors flex items-center justify-center"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td className="p-3.5 text-center text-gray-500 text-xs">{item.hours}</td>
                                             <td className="p-3.5 text-right">
@@ -399,13 +512,22 @@ export default function EC2Calculator() {
                                                 <div className="text-xs text-gray-400">${item.hourlyRate.toFixed(4)}/hr</div>
                                             </td>
                                             <td className="p-3.5 text-center">
-                                                <button
-                                                    onClick={() => ec2.removeFromCart(item.id)}
-                                                    className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50"
-                                                    title="ลบรายการ"
-                                                >
-                                                    🗑️
-                                                </button>
+                                                <div className="flex items-center justify-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => ec2.duplicateCartItem(item.id)}
+                                                        className="text-gray-400 hover:text-blue-500 transition-colors p-1 rounded-lg hover:bg-blue-50"
+                                                        title="คัดลอกรายการ"
+                                                    >
+                                                        📋
+                                                    </button>
+                                                    <button
+                                                        onClick={() => ec2.removeFromCart(item.id)}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50"
+                                                        title="ลบรายการ"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -420,6 +542,7 @@ export default function EC2Calculator() {
                                     </div>
                                     <p className="font-medium text-gray-500">ยังไม่มีรายการในตารางประเมิน</p>
                                     <p className="text-xs mt-1.5 text-gray-400">เลือก Instance Type ด้านซ้ายแล้วกด &quot;เพิ่มลงในรายการประเมิน&quot;</p>
+                                    <p className="text-xs mt-1 text-gray-400">💡 รายการจะถูกบันทึกอัตโนมัติ แม้ปิดหน้าเว็บก็ไม่หาย</p>
                                 </div>
                             )}
                         </div>
@@ -437,6 +560,9 @@ export default function EC2Calculator() {
                                 <div className="text-right">
                                     <p className="text-3xl font-bold tracking-tight text-emerald-400">{formatCurrency(ec2.grandTotal)}</p>
                                     <p className="text-xs text-gray-400">USD / Month</p>
+                                    {ec2.grandTotal > 0 && (
+                                        <p className="text-xs text-gray-500 mt-0.5">~{formatCurrency(ec2.grandTotal * 12)} / Year</p>
+                                    )}
                                 </div>
                             </div>
                         </div>

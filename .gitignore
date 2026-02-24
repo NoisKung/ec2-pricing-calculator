@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AWS pricing raw data (700MB+, regenerate with scripts/)
+scripts/aws-pricing-data/
+
+# editor swap files
+*.swp
+*.swo
+*~
+
+# stray exports
+src/*.json
+

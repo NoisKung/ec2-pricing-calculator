@@ -1,6 +1,6 @@
 import { PricingModel, PricingModelKey } from '@/types/ec2';
 
-export const API_URL = 'https://tedivm.github.io/ec2details/api/ec2instances.json';
+export const API_URL = '/data/ec2instances.json';
 
 export const PRICING_MODELS: Record<PricingModelKey, PricingModel> = {
     ondemand: { label: 'On-Demand', discount: 1.0, color: 'blue' },
