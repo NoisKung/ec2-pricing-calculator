@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS EC2 Pricing Calculator</title>
+    <meta name="description"
+        content="เครื่องมือคำนวณราคา AWS EC2 แบบเรียลไทม์ รองรับ On-Demand, Reserved Instance, Savings Plan">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Prompt', sans-serif;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Premium gradient bg */
+        .bg-gradient-main {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        }
+
+        /* Search dropdown */
+        .instance-dropdown {
+            max-height: 280px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #475569 transparent;
+        }
+
+        .instance-dropdown::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .instance-dropdown::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .instance-dropdown::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+
+        .instance-option:hover {
+            background: #f1f5f9;
+        }
+
+        .instance-option.selected {
+            background: #eff6ff;
+            border-left: 3px solid #3b82f6;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -200% 0;
+            }
+
+            100% {
+                background-position: 200% 0;
+            }
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.15);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeInUp 0.4s ease-out;
+        }
+
+        .skeleton {
+            background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+        }
+
+        .card-glow:hover {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        /* Pricing model tabs */
+        .pricing-tab {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .pricing-tab.active {
+            background: #1e40af;
+            color: white;
+            box-shadow: 0 2px 8px rgba(30, 64, 175, 0.3);
+        }
+
+        .pricing-tab:not(.active):hover {
+            background: #e0e7ff;
+        }
+
+        /* Badge styles */
+        .badge-savings {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        /* Table row animate */
+        .table-row-enter {
+            animation: fadeInUp 0.3s ease-out;
+        }
+
+        /* Comparison card */
+        .comparison-card {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .comparison-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+
+        .comparison-card.best {
+            border-color: #10b981;
+            background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-gradient-main text-white shadow-2xl relative overflow-hidden">
+        <div class="absolute inset-0 opacity-10">
+            <div
+                class="absolute top-0 right-0 w-96 h-96 bg-blue-500 rounded-full filter blur-3xl -translate-y-1/2 translate-x-1/2">
+            </div>
+            <div
+                class="absolute bottom-0 left-0 w-64 h-64 bg-orange-500 rounded-full filter blur-3xl translate-y-1/2 -translate-x-1/2">
+            </div>
+        </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="bg-orange-500/20 p-2 rounded-xl">
+                        <i class="ph-fill ph-cloud text-2xl text-orange-400"></i>
+                    </div>
+                    <div>
+                        <span class="font-semibold text-lg tracking-tight block leading-tight">AWS EC2 Pricing
+                            Calculator</span>
+                        <span class="text-xs text-gray-400">เครื่องมือคำนวณราคา EC2 แบบเรียลไทม์</span>
+                    </div>
+                </div>
+                <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400">
+                    <i class="ph ph-database text-green-400"></i>
+                    <span id="data-status">กำลังโหลดข้อมูล...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+
+        <!-- Loading State -->
+        <div id="loading-state" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 space-y-4">
+                    <div class="skeleton h-12 w-full"></div>
+                    <div class="skeleton h-48 w-full"></div>
+                    <div class="skeleton h-32 w-full"></div>
+                </div>
+                <div class="lg:col-span-8 space-y-4">
+                    <div class="skeleton h-12 w-full"></div>
+                    <div class="skeleton h-64 w-full"></div>
+                </div>
+            </div>
+            <p class="text-center text-gray-500 text-sm mt-8">
+                <i class="ph ph-spinner animate-spin text-xl mr-2"></i>
+                กำลังดึงข้อมูลราคา EC2 จาก AWS...
+            </p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden">
+            <div class="bg-red-50 border border-red-200 rounded-2xl p-8 text-center max-w-lg mx-auto mt-12">
+                <i class="ph ph-warning-circle text-5xl text-red-400 mb-4"></i>
+                <h3 class="text-lg font-semibold text-red-800 mb-2">ไม่สามารถโหลดข้อมูลราคาได้</h3>
+                <p class="text-sm text-red-600 mb-4" id="error-message">เกิดข้อผิดพลาดในการเชื่อมต่อ</p>
+                <button onclick="loadData()"
+                    class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl text-sm font-medium transition-colors">
+                    <i class="ph ph-arrow-clockwise mr-1"></i> ลองใหม่อีกครั้ง
+                </button>
+            </div>
+        </div>
+
+        <!-- Main App (hidden until data loads) -->
+        <div id="app-content" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Left: Configuration Panel -->
+                <div class="lg:col-span-4 space-y-5">
+
+                    <!-- Instance Configuration -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 card-glow">
+                        <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+                            <div class="bg-blue-100 p-1.5 rounded-lg">
+                                <i class="ph ph-sliders text-blue-600 text-lg"></i>
+                            </div>
+                            ตั้งค่าอินสแตนซ์
+                        </h2>
+
+                        <form id="calc-form" class="space-y-3.5">
+                            <!-- Region -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <i class="ph ph-globe text-gray-400 mr-1"></i>ภูมิภาค (Region)
+                                </label>
+                                <select id="region-select"
+                                    class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white">
+                                </select>
+                            </div>
+
+                            <!-- OS -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <i class="ph ph-desktop text-gray-400 mr-1"></i>ระบบปฏิบัติการ (OS)
+                                </label>
+                                <select id="os-select"
+                                    class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white">
+                                    <option value="Linux">Linux</option>
+                                    <option value="Windows">Windows</option>
+                                    <option value="RHEL">RHEL (Red Hat)</option>
+                                    <option value="SUSE">SUSE</option>
+                                </select>
+                            </div>
+
+                            <!-- Instance Family Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <i class="ph ph-funnel text-gray-400 mr-1"></i>ตระกูล (Instance Family)
+                                </label>
+                                <select id="family-select"
+                                    class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white">
+                                    <option value="all">ทั้งหมด (All Families)</option>
+                                </select>
+                            </div>
+
+                            <!-- Instance Type with Search -->
+                            <div class="relative">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <i class="ph ph-cpu text-gray-400 mr-1"></i>ประเภท (Instance Type)
+                                </label>
+                                <div class="relative">
+                                    <input type="text" id="instance-search" placeholder="ค้นหา instance type..."
+                                        autocomplete="off"
+                                        class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pr-8">
+                                    <i
+                                        class="ph ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                </div>
+                                <div id="instance-dropdown"
+                                    class="hidden absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl instance-dropdown">
+                                </div>
+                                <input type="hidden" id="instance-selected" value="">
+                            </div>
+
+                            <!-- Instance Specs -->
+                            <div id="instance-specs-card"
+                                class="hidden bg-gray-50 rounded-xl p-3 border border-gray-100">
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="ph ph-cpu text-blue-500"></i>
+                                        <span class="text-gray-500">vCPU:</span>
+                                        <span class="font-medium" id="spec-vcpu">-</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="ph ph-memory text-purple-500"></i>
+                                        <span class="text-gray-500">RAM:</span>
+                                        <span class="font-medium" id="spec-ram">-</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="ph ph-hard-drives text-orange-500"></i>
+                                        <span class="text-gray-500">Storage:</span>
+                                        <span class="font-medium" id="spec-storage">-</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="ph ph-wifi-high text-green-500"></i>
+                                        <span class="text-gray-500">Network:</span>
+                                        <span class="font-medium" id="spec-network">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pricing Model -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                                    <i class="ph ph-tag text-gray-400 mr-1"></i>รูปแบบราคา (Pricing Model)
+                                </label>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button type="button"
+                                        class="pricing-tab active rounded-lg px-3 py-2 text-xs font-medium text-center"
+                                        data-model="ondemand">
+                                        On-Demand
+                                    </button>
+                                    <button type="button"
+                                        class="pricing-tab rounded-lg px-3 py-2 text-xs font-medium text-center bg-gray-100 text-gray-600"
+                                        data-model="ri1yr">
+                                        RI 1 ปี <span class="badge-savings ml-1">-31%</span>
+                                    </button>
+                                    <button type="button"
+                                        class="pricing-tab rounded-lg px-3 py-2 text-xs font-medium text-center bg-gray-100 text-gray-600"
+                                        data-model="ri3yr">
+                                        RI 3 ปี <span class="badge-savings ml-1">-55%</span>
+                                    </button>
+                                    <button type="button"
+                                        class="pricing-tab rounded-lg px-3 py-2 text-xs font-medium text-center bg-gray-100 text-gray-600"
+                                        data-model="sp">
+                                        Savings Plan <span class="badge-savings ml-1">-37%</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Quantity & Hours -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">จำนวน</label>
+                                    <input type="number" id="quantity" min="1" value="1"
+                                        class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">ชม./เดือน</label>
+                                    <input type="number" id="hours" min="1" max="730" value="730"
+                                        class="w-full rounded-xl border-gray-300 border p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <!-- Live Price Preview -->
+                            <div
+                                class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                                <p class="text-xs text-blue-700 mb-0.5">ราคาประเมินต่อเดือน (ต่อ 1 เครื่อง)</p>
+                                <p class="text-2xl font-bold text-blue-900" id="current-price-display">$0.00</p>
+                                <p class="text-xs text-blue-600 mt-0.5" id="current-hourly-display">($0.0000 / ชั่วโมง)
+                                </p>
+                                <p class="text-xs text-blue-500 mt-1" id="current-model-label">On-Demand</p>
+                            </div>
+
+                            <!-- Add Button -->
+                            <button type="button" id="add-btn" disabled
+                                class="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-lg active:scale-[0.98]">
+                                <i class="ph ph-plus-circle text-lg"></i>
+                                เพิ่มลงในรายการประเมิน
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Pricing Comparison Card -->
+                    <div id="pricing-compare-card"
+                        class="hidden bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+                        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <div class="bg-green-100 p-1.5 rounded-lg">
+                                <i class="ph ph-chart-bar text-green-600 text-lg"></i>
+                            </div>
+                            เปรียบเทียบราคา (ต่อเดือน / 1 เครื่อง)
+                        </h3>
+                        <div class="space-y-2" id="compare-list"></div>
+
+                        <!-- Stopped Instance Info -->
+                        <div class="mt-3 pt-3 border-t border-gray-100">
+                            <div class="flex items-start gap-2 text-xs text-gray-500">
+                                <i class="ph ph-info text-amber-500 mt-0.5 flex-shrink-0"></i>
+                                <div>
+                                    <span class="font-medium text-gray-700">Stopped Instance:</span>
+                                    ไม่มีค่า Compute แต่ยังมีค่า EBS Storage (~$0.10/GB/เดือน)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Estimate Summary -->
+                <div class="lg:col-span-8 space-y-5">
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col"
+                        style="min-height: 500px;">
+                        <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <h2 class="text-base font-semibold flex items-center gap-2">
+                                <div class="bg-emerald-100 p-1.5 rounded-lg">
+                                    <i class="ph ph-list-numbers text-emerald-600 text-lg"></i>
+                                </div>
+                                รายการประเมินราคา
+                                <span id="item-count"
+                                    class="hidden bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium"></span>
+                            </h2>
+                            <button id="clear-all-btn"
+                                class="text-xs text-red-500 hover:text-red-700 hidden font-medium transition-colors flex items-center gap-1 hover:bg-red-50 px-3 py-1.5 rounded-lg">
+                                <i class="ph ph-trash text-sm"></i>
+                                ล้างทั้งหมด
+                            </button>
+                        </div>
+
+                        <!-- Table -->
+                        <div class="p-0 overflow-x-auto flex-grow">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr
+                                        class="bg-gray-50 text-gray-500 text-xs border-b border-gray-200 uppercase tracking-wider">
+                                        <th class="p-3.5 font-medium">รายละเอียด</th>
+                                        <th class="p-3.5 font-medium text-center">รูปแบบ</th>
+                                        <th class="p-3.5 font-medium text-center">จำนวน</th>
+                                        <th class="p-3.5 font-medium text-center">ชม./เดือน</th>
+                                        <th class="p-3.5 font-medium text-right">ราคา/เดือน</th>
+                                        <th class="p-3.5 font-medium text-center w-12"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="estimate-list" class="divide-y divide-gray-100 text-sm">
+                                </tbody>
+                            </table>
+
+                            <!-- Empty State -->
+                            <div id="empty-state" class="p-16 text-center text-gray-400 flex flex-col items-center">
+                                <div class="bg-gray-100 p-4 rounded-2xl mb-4">
+                                    <i class="ph ph-shopping-cart-simple text-4xl text-gray-300"></i>
+                                </div>
+                                <p class="font-medium text-gray-500">ยังไม่มีรายการในตารางประเมิน</p>
+                                <p class="text-xs mt-1.5 text-gray-400">เลือก Instance Type ด้านซ้ายแล้วกด
+                                    "เพิ่มลงในรายการประเมิน"</p>
+                            </div>
+                        </div>
+
+                        <!-- Grand Total -->
+                        <div class="bg-gradient-main text-white p-5 mt-auto relative overflow-hidden">
+                            <div class="absolute inset-0 opacity-10">
+                                <div class="absolute top-0 right-0 w-32 h-32 bg-green-400 rounded-full filter blur-2xl">
+                                </div>
+                            </div>
+                            <div class="flex flex-col sm:flex-row justify-between items-center gap-3 relative z-10">
+                                <div>
+                                    <p class="text-gray-400 text-sm">ยอดรวมประเมินรายเดือน (Total Estimated Monthly
+                                        Cost)</p>
+                                    <p class="text-xs text-gray-500 mt-0.5">* ราคาประมาณการ ไม่รวมภาษี, Data Transfer,
+                                        EBS Volume</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-3xl font-bold tracking-tight text-emerald-400" id="grand-total">$0.00
+                                    </p>
+                                    <p class="text-xs text-gray-400">USD / Month</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-gray-200 py-4 mt-auto text-center text-xs text-gray-400">
+        <p>ข้อมูลราคาจาก <a href="https://github.com/tedivm/ec2details" target="_blank"
+                class="text-blue-500 hover:underline">ec2details API</a>
+            — ราคา On-Demand เป็นข้อมูลจริง, RI/SP เป็นค่าประมาณอัตราส่วนลดมาตรฐาน</p>
+    </footer>
+
+    <script>
+        // ========================
+        // 1. CONSTANTS & STATE
+        // ========================
+        const API_URL = 'https://tedivm.github.io/ec2details/api/ec2instances.json';
+
+        const PRICING_MODELS = {
+            ondemand: { label: 'On-Demand', discount: 1.0, color: 'blue' },
+            ri1yr: { label: 'Reserved 1 ปี (No Upfront)', discount: 0.69, color: 'purple' },
+            ri3yr: { label: 'Reserved 3 ปี (All Upfront)', discount: 0.45, color: 'indigo' },
+            sp: { label: 'Savings Plan (Compute)', discount: 0.63, color: 'green' }
+        };
+
+        const REGION_NAMES = {
+            'af-south-1': 'Africa (Cape Town)',
+            'ap-east-1': 'Asia Pacific (Hong Kong)',
+            'ap-northeast-1': 'Asia Pacific (Tokyo)',
+            'ap-northeast-2': 'Asia Pacific (Seoul)',
+            'ap-northeast-3': 'Asia Pacific (Osaka)',
+            'ap-south-1': 'Asia Pacific (Mumbai)',
+            'ap-south-2': 'Asia Pacific (Hyderabad)',
+            'ap-southeast-1': 'Asia Pacific (Singapore)',
+            'ap-southeast-2': 'Asia Pacific (Sydney)',
+            'ap-southeast-3': 'Asia Pacific (Jakarta)',
+            'ap-southeast-4': 'Asia Pacific (Melbourne)',
+            'ca-central-1': 'Canada (Central)',
+            'eu-central-1': 'Europe (Frankfurt)',
+            'eu-central-2': 'Europe (Zurich)',
+            'eu-north-1': 'Europe (Stockholm)',
+            'eu-south-1': 'Europe (Milan)',
+            'eu-south-2': 'Europe (Spain)',
+            'eu-west-1': 'Europe (Ireland)',
+            'eu-west-2': 'Europe (London)',
+            'eu-west-3': 'Europe (Paris)',
+            'il-central-1': 'Israel (Tel Aviv)',
+            'me-central-1': 'Middle East (UAE)',
+            'me-south-1': 'Middle East (Bahrain)',
+            'sa-east-1': 'South America (São Paulo)',
+            'us-east-1': 'US East (N. Virginia)',
+            'us-east-2': 'US East (Ohio)',
+            'us-west-1': 'US West (N. California)',
+            'us-west-2': 'US West (Oregon)',
+            'us-gov-east-1': 'AWS GovCloud (US-East)',
+            'us-gov-west-1': 'AWS GovCloud (US-West)'
+        };
+
+        let ec2Data = {};          // Raw API data
+        let filteredInstances = []; // After region/OS/family filter
+        let estimateCart = [];
+        let selectedModel = 'ondemand';
+        let selectedInstance = null;
+
+        // ========================
+        // 2. DOM ELEMENTS
+        // ========================
+        const elLoading = document.getElementById('loading-state');
+        const elError = document.getElementById('error-state');
+        const elApp = document.getElementById('app-content');
+        const elErrorMsg = document.getElementById('error-message');
+        const elDataStatus = document.getElementById('data-status');
+
+        const elRegion = document.getElementById('region-select');
+        const elOs = document.getElementById('os-select');
+        const elFamily = document.getElementById('family-select');
+        const elSearch = document.getElementById('instance-search');
+        const elDropdown = document.getElementById('instance-dropdown');
+        const elSelectedInstance = document.getElementById('instance-selected');
+        const elSpecsCard = document.getElementById('instance-specs-card');
+
+        const elQty = document.getElementById('quantity');
+        const elHours = document.getElementById('hours');
+        const elCurrentPrice = document.getElementById('current-price-display');
+        const elCurrentHourly = document.getElementById('current-hourly-display');
+        const elModelLabel = document.getElementById('current-model-label');
+        const btnAdd = document.getElementById('add-btn');
+
+        const elEstimateList = document.getElementById('estimate-list');
+        const elEmptyState = document.getElementById('empty-state');
+        const elGrandTotal = document.getElementById('grand-total');
+        const btnClearAll = document.getElementById('clear-all-btn');
+        const elItemCount = document.getElementById('item-count');
+        const elCompareCard = document.getElementById('pricing-compare-card');
+        const elCompareList = document.getElementById('compare-list');
+
+        // ========================
+        // 3. DATA LOADING
+        // ========================
+        async function loadData() {
+            elLoading.classList.remove('hidden');
+            elError.classList.add('hidden');
+            elApp.classList.add('hidden');
+
+            try {
+                const resp = await fetch(API_URL);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                ec2Data = await resp.json();
+
+                const instanceCount = Object.keys(ec2Data).length;
+                elDataStatus.innerHTML = `<i class="ph-fill ph-check-circle text-green-400 mr-1"></i>โหลดแล้ว ${instanceCount} instance types`;
+
+                initApp();
+                elLoading.classList.add('hidden');
+                elApp.classList.remove('hidden');
+                elApp.classList.add('animate-fade-in');
+            } catch (err) {
+                console.error('Failed to load EC2 data:', err);
+                elLoading.classList.add('hidden');
+                elError.classList.remove('hidden');
+                elErrorMsg.textContent = err.message;
+            }
+        }
+
+        // ========================
+        // 4. INITIALIZATION
+        // ========================
+        function initApp() {
+            // Collect all regions
+            const regionSet = new Set();
+            Object.values(ec2Data).forEach(inst => {
+                if (inst.regions) inst.regions.forEach(r => regionSet.add(r));
+            });
+
+            // Sort & populate regions (prioritize common ones)
+            const priorityRegions = ['ap-southeast-1', 'us-east-1', 'us-west-2', 'eu-west-1', 'ap-northeast-1'];
+            const allRegions = [...regionSet].sort((a, b) => {
+                const pa = priorityRegions.indexOf(a);
+                const pb = priorityRegions.indexOf(b);
+                if (pa !== -1 && pb !== -1) return pa - pb;
+                if (pa !== -1) return -1;
+                if (pb !== -1) return 1;
+                return (REGION_NAMES[a] || a).localeCompare(REGION_NAMES[b] || b);
+            });
+
+            elRegion.innerHTML = '';
+            allRegions.forEach(r => {
+                // Only include regions with standard region code format
+                if (!r.match(/^[a-z]{2}-[a-z]+-\d+/) && !r.startsWith('us-gov')) return;
+                const opt = document.createElement('option');
+                opt.value = r;
+                opt.textContent = `${REGION_NAMES[r] || r} [${r}]`;
+                elRegion.appendChild(opt);
+            });
+
+            // Event listeners
+            elRegion.addEventListener('change', onFilterChange);
+            elOs.addEventListener('change', onFilterChange);
+            elFamily.addEventListener('change', onFilterChange);
+            elQty.addEventListener('input', updateLivePreview);
+            elHours.addEventListener('input', updateLivePreview);
+
+            // Instance search
+            elSearch.addEventListener('focus', () => { showDropdown(); });
+            elSearch.addEventListener('input', () => { showDropdown(); });
+            document.addEventListener('click', (e) => {
+                if (!elSearch.contains(e.target) && !elDropdown.contains(e.target)) {
+                    elDropdown.classList.add('hidden');
+                }
+            });
+
+            // Pricing model tabs
+            document.querySelectorAll('.pricing-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.pricing-tab').forEach(t => {
+                        t.classList.remove('active');
+                        t.classList.add('bg-gray-100', 'text-gray-600');
+                    });
+                    tab.classList.add('active');
+                    tab.classList.remove('bg-gray-100', 'text-gray-600');
+                    selectedModel = tab.dataset.model;
+                    updateLivePreview();
+                });
+            });
+
+            btnAdd.addEventListener('click', addItemToCart);
+            btnClearAll.addEventListener('click', clearCart);
+
+            // Initial filter
+            onFilterChange();
+        }
+
+        // ========================
+        // 5. FILTERING
+        // ========================
+        function onFilterChange() {
+            const region = elRegion.value;
+            const os = elOs.value;
+            const familyFilter = elFamily.value;
+
+            // Collect available families
+            const families = new Set();
+            filteredInstances = [];
+
+            Object.entries(ec2Data).forEach(([name, data]) => {
+                // Must have pricing for this region & OS
+                if (!data.prices || !data.prices[os]) return;
+                const osRegions = data.prices[os];
+                if (!osRegions[region]) return;
+
+                const price = osRegions[region].Shared || osRegions[region].Dedicated || Object.values(osRegions[region])[0];
+                if (!price || price <= 0) return;
+
+                const family = name.split('.')[0];
+                families.add(family);
+
+                if (familyFilter === 'all' || family === familyFilter) {
+                    filteredInstances.push({
+                        name,
+                        family,
+                        vcpu: data.vcpu || '-',
+                        memory: data.memory || '-',
+                        storage: data.storage || 'EBS only',
+                        network: data.networkPerformance || '-',
+                        price,
+                        currentGen: data.currentGeneration !== false
+                    });
+                }
+            });
+
+            // Sort: current gen first, then by family name, then by vcpu
+            filteredInstances.sort((a, b) => {
+                if (a.currentGen !== b.currentGen) return b.currentGen - a.currentGen;
+                if (a.family !== b.family) return a.family.localeCompare(b.family);
+                return (parseInt(a.vcpu) || 0) - (parseInt(b.vcpu) || 0);
+            });
+
+            // Update family dropdown
+            const prevFamily = elFamily.value;
+            elFamily.innerHTML = '<option value="all">ทั้งหมด (All Families)</option>';
+            [...families].sort().forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f;
+                opt.textContent = `${f} (${f.toUpperCase()})`;
+                elFamily.appendChild(opt);
+            });
+            if ([...families].includes(prevFamily)) {
+                elFamily.value = prevFamily;
+            }
+
+            // Clear selection
+            selectedInstance = null;
+            elSearch.value = '';
+            elSelectedInstance.value = '';
+            elSpecsCard.classList.add('hidden');
+            btnAdd.disabled = true;
+            elCompareCard.classList.add('hidden');
+            updateLivePreview();
+        }
+
+        // ========================
+        // 6. INSTANCE DROPDOWN
+        // ========================
+        function showDropdown() {
+            const query = elSearch.value.toLowerCase().trim();
+            const matches = filteredInstances.filter(inst =>
+                inst.name.toLowerCase().includes(query) ||
+                inst.family.toLowerCase().includes(query)
+            ).slice(0, 100);
+
+            if (matches.length === 0) {
+                elDropdown.innerHTML = '<div class="p-4 text-center text-gray-400 text-sm">ไม่พบ instance type ที่ตรง</div>';
+            } else {
+                elDropdown.innerHTML = matches.map(inst => `
+                <div class="instance-option px-3 py-2.5 cursor-pointer flex justify-between items-center gap-2 text-sm ${selectedInstance?.name === inst.name ? 'selected' : ''}"
+                     data-name="${inst.name}">
+                    <div>
+                        <span class="font-medium text-gray-900">${inst.name}</span>
+                        ${!inst.currentGen ? '<span class="text-xs text-amber-600 ml-1">(prev gen)</span>' : ''}
+                        <div class="text-xs text-gray-400 mt-0.5">${inst.vcpu} vCPUs • ${inst.memory}</div>
+                    </div>
+                    <span class="text-xs font-medium text-blue-600 whitespace-nowrap">$${inst.price.toFixed(4)}/hr</span>
+                </div>
+            `).join('');
+
+                elDropdown.querySelectorAll('.instance-option').forEach(el => {
+                    el.addEventListener('click', () => selectInstance(el.dataset.name));
+                });
+            }
+
+            elDropdown.classList.remove('hidden');
+        }
+
+        function selectInstance(name) {
+            const inst = filteredInstances.find(i => i.name === name);
+            if (!inst) return;
+
+            selectedInstance = inst;
+            elSearch.value = inst.name;
+            elSelectedInstance.value = inst.name;
+            elDropdown.classList.add('hidden');
+
+            // Show specs
+            document.getElementById('spec-vcpu').textContent = inst.vcpu;
+            document.getElementById('spec-ram').textContent = inst.memory;
+            document.getElementById('spec-storage').textContent = inst.storage;
+            document.getElementById('spec-network').textContent = inst.network;
+            elSpecsCard.classList.remove('hidden');
+            elSpecsCard.classList.add('animate-fade-in');
+
+            btnAdd.disabled = false;
+            updateLivePreview();
+            updateComparisonCard();
+        }
+
+        // ========================
+        // 7. LIVE PREVIEW
+        // ========================
+        function updateLivePreview() {
+            if (!selectedInstance) {
+                elCurrentPrice.textContent = '$0.00';
+                elCurrentHourly.textContent = '($0.0000 / ชั่วโมง)';
+                elModelLabel.textContent = PRICING_MODELS[selectedModel].label;
+                return;
+            }
+
+            const hours = parseInt(elHours.value) || 730;
+            const hourlyRate = selectedInstance.price * PRICING_MODELS[selectedModel].discount;
+            const monthlyCost = hourlyRate * hours;
+
+            elCurrentPrice.textContent = formatCurrency(monthlyCost);
+            elCurrentHourly.textContent = `($${hourlyRate.toFixed(4)} / ชั่วโมง)`;
+            elModelLabel.textContent = PRICING_MODELS[selectedModel].label;
+        }
+
+        // ========================
+        // 8. COMPARISON CARD
+        // ========================
+        function updateComparisonCard() {
+            if (!selectedInstance) {
+                elCompareCard.classList.add('hidden');
+                return;
+            }
+
+            const hours = parseInt(elHours.value) || 730;
+            const basePrice = selectedInstance.price;
+            let bestModel = 'ri3yr';
+
+            const items = Object.entries(PRICING_MODELS).map(([key, model]) => {
+                const hourly = basePrice * model.discount;
+                const monthly = hourly * hours;
+                const savings = ((1 - model.discount) * 100).toFixed(0);
+                return { key, ...model, hourly, monthly, savings };
+            });
+
+            elCompareList.innerHTML = items.map(item => `
+            <div class="comparison-card rounded-lg px-3 py-2.5 ${item.key === 'ri3yr' ? 'best' : 'bg-gray-50'} flex justify-between items-center">
+                <div>
+                    <span class="text-xs font-medium text-gray-700">${item.label}</span>
+                    ${item.key !== 'ondemand' ? `<span class="badge-savings ml-1">-${item.savings}%</span>` : ''}
+                </div>
+                <div class="text-right">
+                    <span class="text-sm font-bold ${item.key === 'ri3yr' ? 'text-green-700' : 'text-gray-900'}">${formatCurrency(item.monthly)}</span>
+                    <div class="text-xs text-gray-400">$${item.hourly.toFixed(4)}/hr</div>
+                </div>
+            </div>
+        `).join('');
+
+            elCompareCard.classList.remove('hidden');
+            elCompareCard.classList.add('animate-fade-in');
+        }
+
+        // ========================
+        // 9. CART MANAGEMENT
+        // ========================
+        function addItemToCart() {
+            if (!selectedInstance) return;
+
+            const regionId = elRegion.value;
+            const regionName = REGION_NAMES[regionId] || regionId;
+            const os = elOs.value;
+            const qty = parseInt(elQty.value) || 1;
+            const hours = parseInt(elHours.value) || 730;
+
+            if (qty <= 0 || hours <= 0) {
+                alert('กรุณากรอกจำนวนและชั่วโมงให้ถูกต้อง (มากกว่า 0)');
+                return;
+            }
+
+            const model = PRICING_MODELS[selectedModel];
+            const hourlyRate = selectedInstance.price * model.discount;
+            const totalMonthly = hourlyRate * hours * qty;
+
+            estimateCart.push({
+                id: Date.now().toString(),
+                region: regionName,
+                regionId,
+                os,
+                type: selectedInstance.name,
+                specs: `${selectedInstance.vcpu} vCPUs, ${selectedInstance.memory}`,
+                model: selectedModel,
+                modelLabel: model.label,
+                qty,
+                hours,
+                hourlyRate,
+                total: totalMonthly
+            });
+
+            renderCart();
+            elQty.value = 1;
+            updateLivePreview();
+
+            // Flash button
+            btnAdd.textContent = '✓ เพิ่มแล้ว!';
+            btnAdd.classList.add('bg-green-600');
+            setTimeout(() => {
+                btnAdd.innerHTML = '<i class="ph ph-plus-circle text-lg"></i> เพิ่มลงในรายการประเมิน';
+                btnAdd.classList.remove('bg-green-600');
+            }, 1000);
+        }
+
+        function removeItemFromCart(id) {
+            estimateCart = estimateCart.filter(item => item.id !== id);
+            renderCart();
+        }
+
+        function clearCart() {
+            if (confirm('คุณต้องการล้างรายการประเมินทั้งหมดใช่หรือไม่?')) {
+                estimateCart = [];
+                renderCart();
+            }
+        }
+
+        // ========================
+        // 10. RENDER CART
+        // ========================
+        function renderCart() {
+            elEstimateList.innerHTML = '';
+            let grandTotal = 0;
+
+            if (estimateCart.length === 0) {
+                elEmptyState.classList.remove('hidden');
+                btnClearAll.classList.add('hidden');
+                elItemCount.classList.add('hidden');
+            } else {
+                elEmptyState.classList.add('hidden');
+                btnClearAll.classList.remove('hidden');
+                elItemCount.classList.remove('hidden');
+                elItemCount.textContent = `${estimateCart.length} รายการ`;
+
+                estimateCart.forEach(item => {
+                    grandTotal += item.total;
+
+                    const modelColors = {
+                        ondemand: 'bg-blue-100 text-blue-700',
+                        ri1yr: 'bg-purple-100 text-purple-700',
+                        ri3yr: 'bg-indigo-100 text-indigo-700',
+                        sp: 'bg-green-100 text-green-700'
+                    };
+
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50 transition-colors table-row-enter';
+                    tr.innerHTML = `
+                    <td class="p-3.5">
+                        <div class="font-medium text-gray-900">${item.type}</div>
+                        <div class="text-xs text-gray-400 mt-0.5">${item.os} • ${item.region}</div>
+                        <div class="text-xs text-gray-400">${item.specs}</div>
+                    </td>
+                    <td class="p-3.5 text-center">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${modelColors[item.model] || 'bg-gray-100 text-gray-600'}">
+                            ${item.model === 'ondemand' ? 'OD' : item.model === 'ri1yr' ? 'RI-1Y' : item.model === 'ri3yr' ? 'RI-3Y' : 'SP'}
+                        </span>
+                    </td>
+                    <td class="p-3.5 text-center">
+                        <span class="inline-flex items-center justify-center px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium text-xs">
+                            x${item.qty}
+                        </span>
+                    </td>
+                    <td class="p-3.5 text-center text-gray-500 text-xs">${item.hours}</td>
+                    <td class="p-3.5 text-right">
+                        <div class="font-semibold text-gray-900">${formatCurrency(item.total)}</div>
+                        <div class="text-xs text-gray-400">$${item.hourlyRate.toFixed(4)}/hr</div>
+                    </td>
+                    <td class="p-3.5 text-center">
+                        <button onclick="removeItemFromCart('${item.id}')" class="text-gray-300 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50" title="ลบรายการ">
+                            <i class="ph ph-trash text-base"></i>
+                        </button>
+                    </td>
+                `;
+                    elEstimateList.appendChild(tr);
+                });
+            }
+
+            elGrandTotal.textContent = formatCurrency(grandTotal);
+        }
+
+        // ========================
+        // UTILITY
+        // ========================
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        }
+
+        // ========================
+        // INIT
+        // ========================
+        document.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+
+</html>
