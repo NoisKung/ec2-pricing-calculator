@@ -1,6 +1,7 @@
 import { PricingModel, PricingModelKey } from '@/types/ec2';
 
-export const API_URL = '/data/ec2instances.json';
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+export const API_URL = `${basePath}/data/ec2instances.json`;
 
 export const PRICING_MODELS: Record<PricingModelKey, PricingModel> = {
     ondemand: { label: 'On-Demand', discount: 1.0, color: 'blue' },
